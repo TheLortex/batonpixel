@@ -16,9 +16,9 @@ void app_main(void)
   }
   ESP_ERROR_CHECK(ret);
 
-  wifi_init_softap();
+  /* wifi_init_softap();
   start_webserver();
-  start_mdns();
+  start_mdns(); */
   start_led_strip();
-  start_dns_hijack();
+  /* start_dns_hijack(); */
 }
