@@ -1,6 +1,8 @@
 #ifndef __WIFI_H_
 #define __WIFI_H_
 
-void wifi_init_softap(void);
+#include "common.h"
+
+void wifi_init_softap(QueueHandle_t led_event_queue);
 
 #endif

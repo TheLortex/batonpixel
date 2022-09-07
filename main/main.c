@@ -8,17 +8,20 @@
 
 void app_main(void)
 {
-  //Initialize NVS
+  // Initialize NVS
   esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+  {
     ESP_ERROR_CHECK(nvs_flash_erase());
     ret = nvs_flash_init();
   }
   ESP_ERROR_CHECK(ret);
 
-  /* wifi_init_softap();
-  start_webserver();
-  start_mdns(); */
-  start_led_strip();
-  /* start_dns_hijack(); */
+  QueueHandle_t led_event_queue = xQueueCreate(16, sizeof(struct message));
+
+  wifi_init_softap(led_event_queue);
+  start_webserver(led_event_queue);
+  start_mdns();
+  start_led_strip(led_event_queue);
+  start_dns_hijack();
 }

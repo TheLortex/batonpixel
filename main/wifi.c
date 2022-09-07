@@ -5,7 +5,22 @@
 
 static const char *TAG = "pixelstick-wifi";
 
-void wifi_init_softap(void) {
+static void event_handler(void* led_event_queue, esp_event_base_t event_base,
+                                int32_t event_id, void* event_data)
+{
+  struct message event;
+
+  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
+    event.type = WIFI_CONNECTED;
+    xQueueSend((QueueHandle_t) led_event_queue, &event, 100);
+  } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+    event.type = WIFI_DISCONNECTED;
+    xQueueSend((QueueHandle_t) led_event_queue, &event, 100);
+  } 
+}
+
+
+void wifi_init_softap(QueueHandle_t led_event_queue) {
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   esp_netif_create_default_wifi_ap();
@@ -30,7 +45,12 @@ void wifi_init_softap(void) {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
-
+  esp_event_handler_instance_t instance_any_id;
+  ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                      ESP_EVENT_ANY_ID,
+                                                      &event_handler,
+                                                      (void*)led_event_queue,
+                                                      &instance_any_id));
   // configure IP
 	ESP_ERROR_CHECK(tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP));
 	tcpip_adapter_ip_info_t info;

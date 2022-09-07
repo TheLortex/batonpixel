@@ -1,6 +1,8 @@
 #ifndef __HTTP_H_
 #define __HTTP_H_
 
-void start_webserver();
+#include "common.h"
+
+void start_webserver(QueueHandle_t led_event_queue);
 
 #endif
