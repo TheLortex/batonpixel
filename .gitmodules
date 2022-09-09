@@ -1,6 +1,0 @@
-[submodule "esp-idf-lib"]
-	path = esp-idf-lib
-	url = ./esp-idf-lib
-[submodule "esp-protocols"]
-	path = esp-protocols
-	url = https://github.com/espressif/esp-protocols
