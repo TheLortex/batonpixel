@@ -5,6 +5,7 @@
 #include "dns.h"
 #include "led.h"
 #include "http.h"
+#include "bt.h"
 
 void app_main(void)
 {
@@ -19,9 +20,11 @@ void app_main(void)
 
   QueueHandle_t led_event_queue = xQueueCreate(16, sizeof(struct message));
 
-  wifi_init_softap(led_event_queue);
-  start_webserver(led_event_queue);
-  start_mdns();
+  /* wifi_init_softap(led_event_queue); */
+  /* start_webserver(led_event_queue);
+  start_mdns(); */
   start_led_strip(led_event_queue);
-  start_dns_hijack();
+  /* start_dns_hijack(); */
+
+  bt_init(led_event_queue);
 }
