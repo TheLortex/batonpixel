@@ -6,7 +6,7 @@ authors:
 homepage: https://github.com/edufolly/flutter_bluetooth_serial/tree/master/example/
 
 environment:
-  sdk: ">=2.12.0 <3.0.0"
+  sdk: ">=2.17.0 <3.0.0"
 
 dependencies:
   flutter:
@@ -14,6 +14,8 @@ dependencies:
 
   scoped_model: ^2.0.0-nullsafety.0
   cupertino_icons: ^1.0.3
+  file_picker: 5.1.0
+  image: ^3.2.0
 
 dev_dependencies:
   flutter_test:
