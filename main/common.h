@@ -9,22 +9,29 @@
 #define LED_CORE 1
 #define NET_CORE 0
 
-enum message_type {
+enum message_type
+{
   WIFI_CONNECTED,
   WIFI_DISCONNECTED,
   STOP,
-  ANIMATE
+  ANIMATE,
+  ANIMATE_BEGIN,
+  ANIMATE_END
 };
 
-struct http_animation_block {
-  unsigned int repeat;
-  char* buffer;
+struct http_animation_block
+{
+  int width;
+  char *buffer;
 };
 
-struct message {
+struct message
+{
   enum message_type type;
-  union {
+  union
+  {
     struct http_animation_block http_animation;
+    int animation_speed;
   };
 };
 

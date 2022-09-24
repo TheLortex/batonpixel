@@ -1,15 +1,16 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:flutter_bluetooth_serial_example/ConnectedWidget.dart';
 import 'package:image/image.dart' as img;
 
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart' as ft;
+import 'dart:convert';
 
 // import './helpers/LineChart.dart';
 
@@ -20,50 +21,12 @@ class MainPage extends StatefulWidget {
 
 const deviceMac = "30:AE:A4:39:11:EA";
 
-class DecodeParam {
-  final Uint8List fileBytes;
-  final SendPort sendPort;
-  DecodeParam(this.fileBytes, this.sendPort);
-}
-
-img.Image? prepareImageSync(Uint8List fileBytes) {
-  ft.debugPrint("bytes" +
-      fileBytes.length.toString() +
-      ": " +
-      fileBytes.sublist(0, 1000).toString());
-
-  var image = img.decodeImage(fileBytes);
-
-  if (image == null) {
-    return null;
-  }
-
-  if (image.height > image.width) {
-    image = img.copyRotate(image, 90);
-  }
-
-  return img.copyResize(image, height: 144);
-}
-
-Future<img.Image?> prepareImage(PlatformFile file) async {
-  var receivePort = ReceivePort();
-
-  await Isolate.spawn((DecodeParam p) {
-    ft.debugPrint("Preparing image");
-    final image = prepareImageSync(p.fileBytes);
-    ft.debugPrint("Image ready");
-    p.sendPort.send(image);
-  }, DecodeParam(file.bytes!, receivePort.sendPort));
-
-  return (await receivePort.first) as img.Image?;
-}
-
 class _MainPage extends State<MainPage> {
   BluetoothState _bluetoothState = BluetoothState.UNKNOWN;
   BluetoothDevice? _bluetoothDevice;
   BluetoothConnection? _connection;
-  img.Image? _image;
-  Uint8List? _imageRender;
+  Stream? _input;
+  int? _pixels;
 
   @override
   void initState() {
@@ -148,52 +111,19 @@ class _MainPage extends State<MainPage> {
   }
 
   Widget connectedPage(BluetoothConnection c) {
-    Widget image = const Text('waiting for image');
-
-    if (_imageRender != null) {
-      image = SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          height: 144 * 2,
-          width: _image!.width * 2,
-          child: Image.memory(_imageRender!, fit: BoxFit.cover),
-        ),
-      );
+    if (_pixels == null) {
+      return ListView(children: [
+        ListTile(title: const Text('Connected to pixel stick')),
+        Divider(),
+        ListTile(title: const Text('Handshaking')),
+      ]);
+    } else {
+      return ListView(children: [
+        ListTile(title: const Text('Connected to pixel stick')),
+        Divider(),
+        ConnectedWidget(connection: c, pixels: _pixels!, input: _input!)
+      ]);
     }
-
-    return ListView(children: [
-      ListTile(title: const Text('Connected to pixel stick')),
-      Divider(),
-      ListTile(title: const Text('Select image')),
-      ListTile(
-          title: ElevatedButton(
-        child: const Text('Select'),
-        onPressed: () {
-          FilePicker.platform
-              .pickFiles(type: FileType.image, withData: true)
-              .then((file) {
-            if (file != null) {
-              prepareImage(file.files.first).then((image) {
-                if (image != null) {
-                  setState(() => {
-                        _image = image,
-                        _imageRender = img.encodeJpg(image) as Uint8List
-                      });
-                }
-              });
-            }
-          });
-        },
-      )),
-      image,
-      ListTile(
-          title: ElevatedButton(
-        onPressed: () {
-          c.output.add(ascii.encode('Hello!'));
-        },
-        child: const Text('Start'),
-      )),
-    ]);
   }
 
   Widget connectPage(BluetoothDevice target) {
@@ -204,7 +134,20 @@ class _MainPage extends State<MainPage> {
           title: ElevatedButton(
         onPressed: () {
           BluetoothConnection.toAddress(target.address).then((connection) {
-            setState(() => {_connection = connection});
+            connection.output.add(Uint8List.fromList([0]));
+            Stream input = connection.input!.asBroadcastStream();
+            setState(() => {_connection = connection, _input = input});
+
+            _input!.first.then((response) {
+              if (response[0] == 1) {
+                int pixels = ByteData.sublistView(response, 1, 5)
+                    .getUint32(0, Endian.little);
+                ft.debugPrint("Got pixels: " + pixels.toString());
+                setState(() => {_pixels = pixels});
+              } else {
+                setState(() => {_connection = null});
+              }
+            });
           });
         },
         child: const Text('Connect'),
@@ -219,7 +162,7 @@ class _MainPage extends State<MainPage> {
     if (_bluetoothState == BluetoothState.STATE_ON) {
       if (_bluetoothDevice == null) {
         content = notConnectedPage();
-      } else if (!_bluetoothDevice!.isConnected) {
+      } else if (!_bluetoothDevice!.isConnected || _connection == null) {
         content = connectPage(_bluetoothDevice!);
       } else if (_connection != null) {
         content = connectedPage(_connection!);
