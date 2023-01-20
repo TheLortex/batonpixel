@@ -2,9 +2,10 @@
 #include "led.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include "driver/rmt.h"
-#include "led_strip_esp.h"
+#include "led_strip.h"
 #include "bt.h"
+
+#include "esp_timer.h"
 
 static const char *TAG = "pixelstick-led";
 
@@ -52,7 +53,7 @@ struct led_state
 #define PIXEL_BUFFER_SIZE (MAX_COL * COLUMN_BYTES)
 static char pixel_buffer[PIXEL_BUFFER_SIZE];
 
-void render(struct led_state *state, led_strip_t *strip)
+void render(struct led_state *state, led_strip_handle_t strip)
 {
   int index;
 
@@ -67,14 +68,14 @@ void render(struct led_state *state, led_strip_t *strip)
 
     if (index < LED_COUNT / 2)
     {
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 + index, 12, 2, 10));
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 - index, 12, 2, 10));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 + index, 12, 2, 10));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 - index, 12, 2, 10));
     }
     else
     {
       index -= LED_COUNT / 2;
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 + index, 0, 0, 0));
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 - index, 0, 0, 0));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 + index, 0, 0, 0));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 - index, 0, 0, 0));
     }
 
     state->init_step++;
@@ -96,11 +97,11 @@ void render(struct led_state *state, led_strip_t *strip)
       {
         int dist = abs(i * 10 - index);
         int ofs = 4 * (50 - dist);
-        ESP_ERROR_CHECK(strip->set_pixel(strip, i, ofs, 0, 0));
+        ESP_ERROR_CHECK(led_strip_set_pixel(strip, i, ofs, 0, 0));
       }
       else
       {
-        ESP_ERROR_CHECK(strip->set_pixel(strip, i, 0, 0, 0));
+        ESP_ERROR_CHECK(led_strip_set_pixel(strip, i, 0, 0, 0));
       }
     }
 
@@ -129,14 +130,14 @@ void render(struct led_state *state, led_strip_t *strip)
 
     if (index < LED_COUNT / 2)
     {
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 + index, 2, 14, 4));
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 - index, 2, 14, 4));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 + index, 2, 14, 4));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 - index, 2, 14, 4));
     }
     else
     {
       index -= LED_COUNT / 2;
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 + index, 0, 0, 0));
-      ESP_ERROR_CHECK(strip->set_pixel(strip, LED_COUNT / 2 - index, 0, 0, 0));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 + index, 0, 0, 0));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, LED_COUNT / 2 - index, 0, 0, 0));
     }
 
     state->connected_step++;
@@ -150,7 +151,7 @@ void render(struct led_state *state, led_strip_t *strip)
   case BLACK:
     for (int i = 0; i < LED_COUNT; i++)
     {
-      ESP_ERROR_CHECK(strip->set_pixel(strip, i, 0, 0, 0));
+      ESP_ERROR_CHECK(led_strip_set_pixel(strip, i, 0, 0, 0));
     }
     break;
 
@@ -194,7 +195,7 @@ void render(struct led_state *state, led_strip_t *strip)
           g = pixel_buffer[base + 1];
           b = pixel_buffer[base + 2];
 
-          ESP_ERROR_CHECK(strip->set_pixel(strip, i, r, g, b));
+          ESP_ERROR_CHECK(led_strip_set_pixel(strip, i, r, g, b));
         }
 
         state->animation.step++;
@@ -210,22 +211,30 @@ void render(struct led_state *state, led_strip_t *strip)
 void led_strip(void *arg)
 {
   QueueHandle_t led_event_queue = (QueueHandle_t)arg;
-  rmt_config_t config = RMT_DEFAULT_CONFIG_TX(CONFIG_EXAMPLE_RMT_TX_GPIO, RMT_TX_CHANNEL);
-  // set counter clock to 40MHz
-  config.clk_div = 2;
 
-  ESP_ERROR_CHECK(rmt_config(&config));
-  ESP_ERROR_CHECK(rmt_driver_install(config.channel, 0, 0));
+  /* LED strip initialization with the GPIO and pixels number*/
+  led_strip_config_t strip_config = {
+      .strip_gpio_num = CONFIG_EXAMPLE_RMT_TX_GPIO, // The GPIO that connected to the LED strip's data line
+      .max_leds = LED_COUNT, // The number of LEDs in the strip,
+      .led_pixel_format = LED_PIXEL_FORMAT_GRB, // Pixel format of your LED strip
+      .led_model = LED_MODEL_WS2812, // LED strip model
+      .flags.invert_out = false, // whether to invert the output signal (useful when your hardware has a level inverter)
+  };
 
-  // install ws2812 driver
-  led_strip_config_t strip_config = LED_STRIP_DEFAULT_CONFIG(LED_COUNT, (led_strip_dev_t)config.channel);
-  led_strip_t *strip = led_strip_new_rmt_ws2812(&strip_config);
+  led_strip_rmt_config_t rmt_config = {
+      .clk_src = RMT_CLK_SRC_DEFAULT, // different clock source can lead to different power consumption
+      .resolution_hz = 10 * 1000 * 1000, // 10MHz
+      .flags.with_dma = false, // whether to enable the DMA feature
+  };
+
+  led_strip_handle_t strip;
+  ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &strip));
   if (!strip)
   {
     ESP_LOGE(TAG, "install WS2812 driver failed");
   }
   // Clear LED strip (turn off all LEDs)
-  ESP_ERROR_CHECK(strip->clear(strip, 100));
+  ESP_ERROR_CHECK(led_strip_clear(strip));
   // Init
   ESP_LOGI(TAG, "Init");
 
@@ -236,14 +245,23 @@ void led_strip(void *arg)
 
   struct message event;
 
+  int64_t t0;
+
   while (true)
   {
-    render(&current_state, strip);
-    ESP_ERROR_CHECK(strip->refresh(strip, 100));
+    t0 = esp_timer_get_time();
 
-    vTaskDelay(pdMS_TO_TICKS(8)); // 120 Hz ?
+    render(&current_state, strip);
+    ESP_ERROR_CHECK(led_strip_refresh(strip));
+
+    // vTaskDelay(1);
 
     int rcv = xQueueReceive(led_event_queue, &event, 0);
+
+    if (current_state.kind == INIT || current_state.kind == IN_ANIMATION)
+    {
+      printf("3: %lld\n", esp_timer_get_time() - t0);
+    }
 
     if (rcv)
     {
@@ -287,7 +305,7 @@ void led_strip(void *arg)
 
         break;
       }
-      printf("MESSAGE: %d", event.type);
+      /* printf("MESSAGE: %d", event.type); */
     }
   }
 }
