@@ -16,7 +16,8 @@ class DecodeParam {
   DecodeParam(this.fileBytes, this.sendPort);
 }
 
-img.Image? prepareImageSync(Uint8List fileBytes) {
+img.Image? prepareImageSync(
+    Uint8List fileBytes, double widthFactor, double brightness) {
   var image = img.decodeImage(fileBytes);
 
   if (image == null) {
@@ -24,18 +25,29 @@ img.Image? prepareImageSync(Uint8List fileBytes) {
   }
 
   if (image.height > image.width) {
-    image = img.copyRotate(image, 90);
+    image = img.copyRotate(image, angle: 90);
   }
 
-  return img.copyResize(image, height: 144);
+  for (final pixel in image) {
+    pixel.r = pixel.r * pixel.a * brightness / 255;
+    pixel.g = pixel.g * pixel.a * brightness / 255;
+    pixel.b = pixel.b * pixel.a * brightness / 255;
+    pixel.a = 255;
+  }
+
+  final width = (widthFactor * image.width * 144 / image.height).round();
+
+  return img.copyResize(image,
+      height: 144, width: width, interpolation: img.Interpolation.cubic);
 }
 
-Future<img.Image?> prepareImage(PlatformFile file) async {
+Future<img.Image?> prepareImage(PlatformFile file,
+    {required double widthFactor, required double brightness}) async {
   var receivePort = ReceivePort();
 
   await Isolate.spawn((DecodeParam p) {
     ft.debugPrint("Preparing image");
-    final image = prepareImageSync(p.fileBytes);
+    final image = prepareImageSync(p.fileBytes, widthFactor, brightness);
     ft.debugPrint("Image ready");
     p.sendPort.send(image);
   }, DecodeParam(file.bytes!, receivePort.sendPort));
@@ -61,8 +73,11 @@ class ConnectedWidget extends StatefulWidget {
 class _ConnectedWidget extends State<ConnectedWidget> {
   img.Image? _image;
   Uint8List? _imageRender;
+  PlatformFile? _file;
   double _delay = 5;
   double _speed = 30;
+  double _widthFactor = 1;
+  double _brightness = 1;
   int? _streaming;
 
   @override
@@ -113,7 +128,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
         ],
       );
     }
-    return ListView(
+    return Column(
       children: [
         ListTile(title: const Text('Select image')),
         ListTile(
@@ -122,13 +137,17 @@ class _ConnectedWidget extends State<ConnectedWidget> {
           onPressed: () {
             FilePicker.platform
                 .pickFiles(type: FileType.image, withData: true)
-                .then((file) {
-              if (file != null) {
-                prepareImage(file.files.first).then((image) {
+                .then((f) {
+              if (f != null) {
+                final file = f.files.first;
+                prepareImage(file, widthFactor: 1, brightness: 1).then((image) {
                   if (image != null) {
                     setState(() => {
                           _image = image,
-                          _imageRender = img.encodeJpg(image) as Uint8List
+                          _imageRender = img.encodeJpg(image),
+                          _file = file,
+                          _widthFactor = 1,
+                          _brightness = 1,
                         });
                   }
                 });
@@ -171,10 +190,72 @@ class _ConnectedWidget extends State<ConnectedWidget> {
           ],
         )),
         ListTile(
+            title: Row(
+          children: [
+            Text("width factor: " + _widthFactor.toStringAsFixed(1).toString()),
+            Expanded(
+                child: Slider(
+                    value: _widthFactor,
+                    min: 1,
+                    max: 10,
+                    divisions: 20,
+                    label: "Width factor",
+                    onChanged: (v) {
+                      setState(() => {_widthFactor = v});
+                    },
+                    onChangeEnd: (v) {
+                      if (_file != null) {
+                        prepareImage(_file as PlatformFile,
+                                widthFactor: v, brightness: _brightness)
+                            .then((image) {
+                          if (image != null) {
+                            setState(() => {
+                                  _image = image,
+                                  _imageRender = img.encodeJpg(image),
+                                  _widthFactor = v
+                                });
+                          }
+                        });
+                      }
+                    }))
+          ],
+        )),
+        ListTile(
+            title: Row(
+          children: [
+            Text("brightness: " + _brightness.toStringAsFixed(1).toString()),
+            Expanded(
+              child: Slider(
+                  value: _brightness,
+                  min: 0,
+                  max: 1,
+                  divisions: 10,
+                  label: "Width factor",
+                  onChanged: (v) {
+                    setState(() => {_brightness = v});
+                  },
+                  onChangeEnd: (v) {
+                    if (_file != null) {
+                      prepareImage(_file as PlatformFile,
+                              widthFactor: _widthFactor, brightness: v)
+                          .then((image) {
+                        if (image != null) {
+                          setState(() => {
+                                _image = image,
+                                _imageRender = img.encodeJpg(image),
+                                _brightness = v
+                              });
+                        }
+                      });
+                    }
+                  }),
+            )
+          ],
+        )),
+        ListTile(
           title: streamingControl,
         )
       ],
-      shrinkWrap: true,
     );
   }
 
@@ -211,10 +292,10 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
       ft.debugPrint("x: " + x.toString());
       for (int y = 0; y < widget.pixels; y++) {
-        var px = _image!.getPixel(x, y);
-        pixelMessage[2 + y * 3] = gamma[px & 0xff];
-        pixelMessage[2 + y * 3 + 1] = gamma[(px >> 8) & 0xff];
-        pixelMessage[2 + y * 3 + 2] = gamma[(px >> 16) & 0xff];
+        final px = _image!.getPixel(x, y);
+        pixelMessage[2 + y * 3] = gamma[px.r as int];
+        pixelMessage[2 + y * 3 + 1] = gamma[px.g as int];
+        pixelMessage[2 + y * 3 + 2] = gamma[px.b as int];
       }
 
       widget.connection.output.add(pixelMessage);
