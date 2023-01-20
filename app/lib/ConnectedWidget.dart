@@ -38,7 +38,7 @@ img.Image? prepareImageSync(
   final width = (widthFactor * image.width * 144 / image.height).round();
 
   return img.copyResize(image,
-      height: 144, width: width, interpolation: img.Interpolation.cubic);
+      height: 144, width: width, interpolation: img.Interpolation.linear);
 }
 
 Future<img.Image?> prepareImage(PlatformFile file,
