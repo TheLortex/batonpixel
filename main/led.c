@@ -301,6 +301,8 @@ void led_strip(void *arg)
 
         memcpy(&pixel_buffer[col_position * COLUMN_BYTES], event.http_animation.buffer, COLUMN_BYTES);
 
+        free(event.http_animation.buffer);
+
         current_state.animation.acked = false;
 
         break;

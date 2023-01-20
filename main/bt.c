@@ -128,9 +128,13 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         }
         else if (param->data_ind.data[0] == MSG_HEADER_PIXEL_DATA)
         {
-            led_event.type = ANIMATE,
-            led_event.http_animation.buffer = (char *)&param->data_ind.data[2];
-            led_event.http_animation.width = (param->data_ind.len - 2) / (LED_COUNT * 3);
+            led_event.type = ANIMATE;
+            int len = param->data_ind.len - 2;
+            led_event.http_animation.buffer = malloc(len);
+            led_event.http_animation.width = len / (LED_COUNT * 3);
+
+            memcpy(led_event.http_animation.buffer, (char *)&param->data_ind.data[2], len);
+            
             xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
         }
         else if (param->data_ind.data[0] == MSG_HEADER_PIXEL_END)
