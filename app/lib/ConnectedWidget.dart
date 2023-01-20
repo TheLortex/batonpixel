@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'dart:isolate';
@@ -80,6 +82,37 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       image = ListTile(title: Text('Select an image'));
     }
 
+    Widget streamingControl;
+
+    if (_imageRender == null) {
+      streamingControl = ElevatedButton(
+          onPressed: null, child: Text("Please select an image"));
+    } else if (_streaming == null) {
+      streamingControl = ElevatedButton(
+          onPressed: () {
+            streamImage();
+          },
+          child: Text('Start'));
+    } else {
+      streamingControl = Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          ElevatedButton(
+              onPressed: null,
+              child: Text('Streaming image: ' +
+                  _streaming.toString() +
+                  ' / ' +
+                  _image!.width.toString())),
+          ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _streaming = null;
+                });
+              },
+              child: Text("STOP"))
+        ],
+      );
+    }
     return ListView(
       children: [
         ListTile(title: const Text('Select image')),
@@ -112,7 +145,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
               child: Slider(
                   value: _delay,
                   min: 0,
-                  max: 30,
+                  max: 10,
+                  divisions: 20,
                   label: "delay",
                   onChanged: (v) {
                     setState(() => {_delay = v});
@@ -137,19 +171,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
           ],
         )),
         ListTile(
-            title: ElevatedButton(
-          onPressed: (_imageRender == null || _streaming != null)
-              ? null
-              : () {
-                  streamImage();
-                },
-          child: Text((_streaming == null)
-              ? 'Start'
-              : 'Streaming image: ' +
-                  _streaming.toString() +
-                  ' / ' +
-                  _image!.width.toString()),
-        ))
+          title: streamingControl,
+        )
       ],
       shrinkWrap: true,
     );
@@ -167,15 +190,25 @@ class _ConnectedWidget extends State<ConnectedWidget> {
   void streamImage() async {
     widget.connection.output
         .add(Uint8List.fromList([3, _speed.toInt()])); // MSG_INIT
-
     await waitAck();
-
     ft.debugPrint("ESP is ready");
+
+    setState(() {
+      _streaming = 0;
+    });
+
+    await Future.delayed(Duration(milliseconds: (_delay * 1000).toInt()));
 
     var pixelMessage = Uint8List(2 + widget.pixels * 3);
     pixelMessage[0] = 2; // TODO: protocol
 
     for (var x = 0; x < _image!.width; x++) {
+      if (_streaming == null) {
+        // Cancelled
+        ft.debugPrint("Cancelled");
+        break;
+      }
+
       ft.debugPrint("x: " + x.toString());
       for (int y = 0; y < widget.pixels; y++) {
         var px = _image!.getPixel(x, y);
@@ -188,7 +221,9 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       await waitAck();
 
       setState(() {
-        _streaming = x;
+        if (_streaming != null) {
+          _streaming = x;
+        }
       });
     }
 
