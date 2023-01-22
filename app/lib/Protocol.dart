@@ -23,14 +23,13 @@ abstract class Send<T> {
 
   void write(StreamSink s, T v) {
     final Uint8List l = serialize(v);
-    final ByteData frame = ByteData(5);
+    final ByteData frame = ByteData(5 + l.length);
     frame.setUint32(0, l.length, Endian.little);
     frame.setUint8(4, id());
-    s.add(frame.buffer.asUint8List());
-    /* debugPrint("OUT : ${frame.buffer.asUint8List()}"); */
-    if (l.length > 0) {
-      s.add(l);
-    }
+    final lst = frame.buffer.asUint8List();
+    lst.setRange(5, 5 + l.length, l);
+
+    s.add(lst);
   }
 }
 

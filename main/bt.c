@@ -88,7 +88,7 @@ void bt_recv(int bt_handle, int frame_len, unsigned char *frame)
     }
 }
 
-#define MAX_RECV_BUFFER 2000
+#define MAX_RECV_BUFFER 4000
 
 static unsigned char receive_buffer[MAX_RECV_BUFFER];
 static int receive_buffer_position = 0;
@@ -100,11 +100,11 @@ void bt_loop_frames(int bt_handle) {
         unsigned int frame_length = *((unsigned int*) &receive_buffer[position]);
 
         if (position + 4 + 1 + frame_length <= receive_buffer_position) {
-            printf("FRAME: %d\n", frame_length);
+            /* printf("FRAME: %d\n", frame_length); */
             bt_recv(bt_handle, 1 + frame_length, &receive_buffer[position + 4]);
             position = position + 4 + 1 + frame_length;
         } else {
-            printf("WAITING: %d => %d (%d)\n", position, position + 4 + 1 + frame_length, receive_buffer_position);
+            /* printf("WAITING: %d => %d (%d)\n", position, position + 4 + 1 + frame_length, receive_buffer_position); */
             break;
         }
     }

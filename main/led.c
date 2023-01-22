@@ -157,6 +157,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
 
   case IN_ANIMATION:;
     int pixel = state->animation.step / state->animation.frames_per_pixel;
+    
     int column = pixel % MAX_COL;
     int planned_buffering_delta =
         (MAX_COL + state->animation.ack_frame - column) % MAX_COL;
@@ -164,10 +165,10 @@ void render(struct led_state *state, led_strip_handle_t strip)
     int actual_buffering_delta =
         (MAX_COL + state->animation.max_position - column) % MAX_COL;
 
-    if (actual_buffering_delta < 16 && !state->animation.streaming_ended)
+    if (actual_buffering_delta < 8 && !state->animation.streaming_ended)
     {
       // ACK
-      if (planned_buffering_delta < 16)
+      if (planned_buffering_delta < 8)
       {
         bt_ack(32 - planned_buffering_delta);
         state->animation.ack_frame = state->animation.ack_frame + 32 - planned_buffering_delta;
@@ -294,9 +295,10 @@ void led_strip(void *arg)
         current_state.animation.max_position = col_position + 1;
 
         ESP_LOGI(TAG,
-                 "Feed %d (%d)",
+                 "Feed %d (%d) (%d)",
                  col_position,
-                 (current_state.animation.step / current_state.animation.frames_per_pixel));
+                 (current_state.animation.step / current_state.animation.frames_per_pixel),
+                 current_state.animation.ack_frame);
 
         memcpy(&pixel_buffer[(col_position % MAX_COL) * COLUMN_BYTES], event.http_animation.buffer, COLUMN_BYTES);
 

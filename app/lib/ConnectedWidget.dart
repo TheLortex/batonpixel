@@ -304,8 +304,6 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       }
 
       PixelData().write(widget.connection.output, pixelMessage);
-
-      await widget.connection.output.allSent;
       todo--;
 
       if (todo == 0) {
