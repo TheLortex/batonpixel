@@ -187,7 +187,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
               child: Slider(
                   value: _speed,
                   min: 1,
-                  max: 125,
+                  max: 200,
                   label: "Speed",
                   onChanged: (v) {
                     setState(() => {_speed = v});

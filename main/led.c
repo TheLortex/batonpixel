@@ -22,7 +22,7 @@ struct animation_block
 {
   unsigned int step;
   unsigned int max_position;
-  unsigned int frames_per_pixel;
+  unsigned int animation_speed;
   bool streaming_ended;
   int ack_frame;
 };
@@ -156,9 +156,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
     break;
 
   case IN_ANIMATION:;
-    int pixel = state->animation.step / state->animation.frames_per_pixel;
-    
-    int column = pixel % MAX_COL;
+    int column = state->animation.step % MAX_COL;
     int planned_buffering_delta =
         (MAX_COL + state->animation.ack_frame - column) % MAX_COL;
 
@@ -251,18 +249,31 @@ void led_strip(void *arg)
 
   struct message event;
 
+  int64_t t_last = esp_timer_get_time();
+
   while (true)
   {
+    // 1. Render
     render(&current_state, strip);
     ESP_ERROR_CHECK(led_strip_refresh(strip));
 
-    // vTaskDelay(1);
-    ets_delay_us(200);
-
-    int rcv = xQueueReceive(led_event_queue, &event, 0);
-
-    if (rcv)
+    // 2. Events
+    int rcv;
+    int budget;
+    if (current_state.kind == IN_ANIMATION)
     {
+      budget = 1000000 / current_state.animation.animation_speed / 5000;
+    }
+    else
+    {
+      budget = 1;
+    }
+
+    assert(budget > 0);
+
+    while (budget > 0 && (rcv = xQueueReceive(led_event_queue, &event, 0)))
+    {
+      budget--;
       switch (event.type)
       {
       case WIFI_CONNECTED:
@@ -282,15 +293,18 @@ void led_strip(void *arg)
         current_state.kind = IN_ANIMATION;
         current_state.animation.max_position = 0;
         current_state.animation.step = 0;
-        current_state.animation.frames_per_pixel = 125 / event.animation_speed;
+        current_state.animation.animation_speed = event.animation_speed; // between 1 and 200
         current_state.animation.streaming_ended = false;
         current_state.animation.ack_frame = 0;
         break;
       case ANIMATE_END:
         ESP_LOGI(TAG, "Ending animation !");
-        if (event.animate_end_aborted) {
+        if (event.animate_end_aborted)
+        {
           current_state.kind = BLACK;
-        } else {
+        }
+        else
+        {
           current_state.animation.streaming_ended = true;
         }
         break;
@@ -301,7 +315,7 @@ void led_strip(void *arg)
         ESP_LOGI(TAG,
                  "Feed %d (%d) (%d)",
                  col_position,
-                 (current_state.animation.step / current_state.animation.frames_per_pixel),
+                 current_state.animation.step,
                  current_state.animation.ack_frame);
 
         memcpy(&pixel_buffer[(col_position % MAX_COL) * COLUMN_BYTES], event.http_animation.buffer, COLUMN_BYTES);
@@ -310,6 +324,39 @@ void led_strip(void *arg)
 
         break;
       }
+    }
+
+    // 3. Sleep until next frame
+    switch (current_state.kind)
+    {
+    case INIT:
+    case WAITING_FOR_CONNECTION:
+    case CONNECTED:
+      ets_delay_us(200);
+      break;
+    case BLACK:
+      vTaskDelay(200);
+      break;
+    case IN_ANIMATION:
+      int64_t t_now = esp_timer_get_time();
+      int64_t t_elapsed = t_now - t_last;
+
+      int64_t pause_time_us = 1000000 / current_state.animation.animation_speed - t_elapsed;
+
+      if (pause_time_us >= 10 * 1000 * portTICK_PERIOD_MS)
+      {
+        vTaskDelay(10 * pause_time_us / (10 * 1000 * portTICK_PERIOD_MS));
+        pause_time_us = pause_time_us % (10 * 1000 * portTICK_PERIOD_MS);
+      }
+
+      if (pause_time_us > 0)
+      {
+        ets_delay_us(pause_time_us);
+      }
+      
+      t_last = esp_timer_get_time();
+
+      break;
     }
   }
 }
