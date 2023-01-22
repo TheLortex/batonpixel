@@ -32,6 +32,7 @@ struct message
   {
     struct http_animation_block http_animation;
     int animation_speed;
+    bool animate_end_aborted;
   };
 };
 

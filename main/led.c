@@ -288,7 +288,11 @@ void led_strip(void *arg)
         break;
       case ANIMATE_END:
         ESP_LOGI(TAG, "Ending animation !");
-        current_state.animation.streaming_ended = true;
+        if (event.animate_end_aborted) {
+          current_state.kind = BLACK;
+        } else {
+          current_state.animation.streaming_ended = true;
+        }
         break;
       case ANIMATE:
         int col_position = current_state.animation.max_position;

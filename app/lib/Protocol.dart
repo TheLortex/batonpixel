@@ -83,12 +83,17 @@ class PixelAck extends Parse<int> {
   }
 }
 
-class PixelEnd extends Send<Null> {
+enum Abort {
+  yes,
+  no,
+}
+
+class PixelEnd extends Send<Abort> {
   int id() {
     return 5;
   }
 
-  Uint8List serialize(Null _) {
-    return Uint8List(0);
+  Uint8List serialize(Abort abort) {
+    return Uint8List.fromList([abort == Abort.yes ? 1 : 0]);
   }
 }

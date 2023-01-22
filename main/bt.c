@@ -84,6 +84,7 @@ void bt_recv(int bt_handle, int frame_len, unsigned char *frame)
     else if (frame[0] == MSG_HEADER_PIXEL_END)
     {
         led_event.type = ANIMATE_END,
+        led_event.animate_end_aborted = frame[1];
         xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
     }
 }

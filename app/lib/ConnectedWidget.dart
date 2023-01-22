@@ -127,6 +127,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
               onPressed: () {
                 setState(() {
                   _streaming = null;
+                  widget.input.cancelNext();
                 });
               },
               child: Text("STOP"))
@@ -288,10 +289,13 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
     var todo = await waitAck();
 
+    var aborted = Abort.no;
+
     for (var x = 0; x < _image!.width; x++) {
       if (_streaming == null) {
         // Cancelled
         debugPrint("Cancelled");
+        aborted = Abort.yes;
         break;
       }
 
@@ -307,7 +311,9 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       todo--;
 
       if (todo == 0) {
-        todo = await waitAck();
+        try {
+          todo = await waitAck();
+        } on Exception catch (_) {}
       }
 
       setState(() {
@@ -317,7 +323,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       });
     }
 
-    PixelEnd().write(widget.connection.output, null);
+    PixelEnd().write(widget.connection.output, aborted);
     widget.input.cancelNext();
 
     debugPrint("done. ");
