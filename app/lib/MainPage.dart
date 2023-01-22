@@ -28,6 +28,7 @@ class _MainPage extends State<MainPage> {
   BluetoothDevice? _bluetoothDevice;
   BluetoothConnection? _connection;
   StreamIteratorCustom<ByteData>? _input;
+  bool _connecting = false;
   int? _pixels;
 
   @override
@@ -133,47 +134,59 @@ class _MainPage extends State<MainPage> {
       Divider(),
       ListTile(
           title: ElevatedButton(
-        onPressed: () {
-          BluetoothConnection.toAddress(target.address).then((connection) {
-            Hello().write(connection.output, null);
+        onPressed: _connecting
+            ? null
+            : () {
+                setState(() {
+                  _connecting = true;
+                });
+                BluetoothConnection.toAddress(target.address)
+                    .then((connection) {
+                  Hello().write(connection.output, null);
 
-            final input = StreamIteratorCustom(connection.input!.map((event) {
-              debugPrint(event.toString());
-              return event;
-            }).expand((event) {
-              List<ByteData> events = [];
-              int position = 0;
+                  final input =
+                      StreamIteratorCustom(connection.input!.map((event) {
+                    debugPrint(event.toString());
+                    return event;
+                  }).expand((event) {
+                    List<ByteData> events = [];
+                    int position = 0;
 
-              while (position < event.length) {
-                int size = ByteData.sublistView(event, position, position + 4)
-                    .getUint32(0, Endian.little);
+                    while (position < event.length) {
+                      int size =
+                          ByteData.sublistView(event, position, position + 4)
+                              .getUint32(0, Endian.little);
 
-                events.add(
-                    ByteData.sublistView(event, position, position + 5 + size));
-                position += 5 + size;
-              }
+                      events.add(ByteData.sublistView(
+                          event, position, position + 5 + size));
+                      position += 5 + size;
+                    }
 
-              assert(position == event.length);
+                    assert(position == event.length);
 
-              return events;
-            }));
-            setState(() => {_connection = connection, _input = input});
+                    return events;
+                  }));
+                  setState(() => {
+                        _connection = connection,
+                        _input = input,
+                        _connecting = false
+                      });
 
-            _input!.moveNext().then((hasNext) {
-              if (hasNext) {
-                final response = _input!.current;
+                  _input!.moveNext().then((hasNext) {
+                    if (hasNext) {
+                      final response = _input!.current;
 
-                int pixels = PixelCount().expect(response);
-                debugPrint("Got pixels: $pixels");
-                setState(() => {_pixels = pixels});
-                return;
-              }
+                      int pixels = PixelCount().expect(response);
+                      debugPrint("Got pixels: $pixels");
+                      setState(() => {_pixels = pixels});
+                      return;
+                    }
 
-              setState(() => {_connection = null});
-            });
-          });
-        },
-        child: const Text('Connect'),
+                    setState(() => {_connection = null});
+                  });
+                });
+              },
+        child: Text(_connecting ? 'Connecting...' : 'Connect'),
       )),
     ]);
   }
