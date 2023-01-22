@@ -1,14 +1,19 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'dart:isolate';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' as ft;
+import 'package:flutter_bluetooth_serial_example/StreamIteratorCustom.dart';
 import 'package:image/image.dart' as img;
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+
+import 'Protocol.dart';
 
 class DecodeParam {
   final Uint8List fileBytes;
@@ -46,9 +51,9 @@ Future<img.Image?> prepareImage(PlatformFile file,
   var receivePort = ReceivePort();
 
   await Isolate.spawn((DecodeParam p) {
-    ft.debugPrint("Preparing image");
+    debugPrint("Preparing image");
     final image = prepareImageSync(p.fileBytes, widthFactor, brightness);
-    ft.debugPrint("Image ready");
+    debugPrint("Image ready");
     p.sendPort.send(image);
   }, DecodeParam(file.bytes!, receivePort.sendPort));
 
@@ -64,7 +69,7 @@ class ConnectedWidget extends StatefulWidget {
 
   final BluetoothConnection connection;
   final int pixels;
-  final Stream input;
+  final StreamIteratorCustom<ByteData> input;
 
   @override
   _ConnectedWidget createState() => new _ConnectedWidget();
@@ -74,7 +79,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
   img.Image? _image;
   Uint8List? _imageRender;
   PlatformFile? _file;
-  double _delay = 5;
+  double _delay = 0;
   double _speed = 30;
   double _widthFactor = 1;
   double _brightness = 1;
@@ -259,20 +264,19 @@ class _ConnectedWidget extends State<ConnectedWidget> {
     );
   }
 
-  Future<void> waitAck() async {
-    var response = await widget.input.first;
-    if (response[0] == 4) {
-      return;
+  Future<int> waitAck() async {
+    var ok = await widget.input.moveNext();
+    if (ok) {
+      final response = widget.input.current;
+      return PixelAck().expect(response);
     } else {
-      throw Exception("Unexpected answer from ESP");
+      throw Exception("Connection closed");
     }
   }
 
   void streamImage() async {
-    widget.connection.output
-        .add(Uint8List.fromList([3, _speed.toInt()])); // MSG_INIT
-    await waitAck();
-    ft.debugPrint("ESP is ready");
+    PixelBegin().write(widget.connection.output, _speed.toInt());
+    debugPrint("ESP is ready");
 
     setState(() {
       _streaming = 0;
@@ -280,26 +284,33 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
     await Future.delayed(Duration(milliseconds: (_delay * 1000).toInt()));
 
-    var pixelMessage = Uint8List(2 + widget.pixels * 3);
-    pixelMessage[0] = 2; // TODO: protocol
+    var pixelMessage = Uint8List(widget.pixels * 3);
+
+    var todo = await waitAck();
 
     for (var x = 0; x < _image!.width; x++) {
       if (_streaming == null) {
         // Cancelled
-        ft.debugPrint("Cancelled");
+        debugPrint("Cancelled");
         break;
       }
 
-      ft.debugPrint("x: " + x.toString());
+      debugPrint("x: $x");
       for (int y = 0; y < widget.pixels; y++) {
         final px = _image!.getPixel(x, y);
-        pixelMessage[2 + y * 3] = gamma[px.r as int];
-        pixelMessage[2 + y * 3 + 1] = gamma[px.g as int];
-        pixelMessage[2 + y * 3 + 2] = gamma[px.b as int];
+        pixelMessage[y * 3] = gamma[px.r as int];
+        pixelMessage[y * 3 + 1] = gamma[px.g as int];
+        pixelMessage[y * 3 + 2] = gamma[px.b as int];
       }
 
-      widget.connection.output.add(pixelMessage);
-      await waitAck();
+      PixelData().write(widget.connection.output, pixelMessage);
+
+      await widget.connection.output.allSent;
+      todo--;
+
+      if (todo == 0) {
+        todo = await waitAck();
+      }
 
       setState(() {
         if (_streaming != null) {
@@ -308,10 +319,10 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       });
     }
 
-    widget.connection.output.add(Uint8List.fromList([5])); // MSG_DONE
-    await waitAck();
+    PixelEnd().write(widget.connection.output, null);
+    widget.input.cancelNext();
 
-    ft.debugPrint("done. ");
+    debugPrint("done. ");
     setState(() {
       _streaming = null;
     });

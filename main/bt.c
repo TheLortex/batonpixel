@@ -38,12 +38,94 @@ static char *bda2str(uint8_t *bda, char *str, size_t size)
 static QueueHandle_t led_event_queue;
 static int conn_handle;
 
-void bt_ack()
+void bt_ack(unsigned int v)
 {
-    uint8_t response_ack[1];
-    response_ack[0] = MSG_HEADER_PIXEL_ACK;
-    ESP_LOGI(SPP_TAG, "ACK");
-    esp_spp_write(conn_handle, 1, response_ack);
+    uint8_t response_ack[9];
+    unsigned int length = 4;
+    memcpy(response_ack, &length, sizeof(unsigned int));
+    response_ack[4] = MSG_HEADER_PIXEL_ACK;
+    unsigned int *ptr = (void *)&response_ack[5];
+    *ptr = v;
+    ESP_LOGI(SPP_TAG, "ACK %d", v);
+    esp_spp_write(conn_handle, 9, response_ack);
+}
+
+void bt_recv(int bt_handle, int frame_len, unsigned char *frame)
+{
+    struct message led_event;
+
+    if (frame[0] == MSG_HEADER_HELLO)
+    {
+        uint8_t response[9];
+        unsigned int length = 4;
+        memcpy(response, &length, sizeof(unsigned int));
+        response[4] = MSG_HEADER_PIXEL_COUNT;
+        unsigned int n_leds = LED_COUNT;
+        memcpy(&response[5], &n_leds, sizeof(unsigned int));
+        esp_spp_write(bt_handle, 9, response);
+    }
+    else if (frame[0] == MSG_HEADER_PIXEL_BEGIN)
+    {
+        led_event.type = ANIMATE_BEGIN;
+        led_event.animation_speed = frame[1];
+        xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
+    }
+    else if (frame[0] == MSG_HEADER_PIXEL_DATA)
+    {
+        led_event.type = ANIMATE;
+        int len = frame_len - 1;
+        led_event.http_animation.buffer = malloc(len);
+        led_event.http_animation.width = len / (LED_COUNT * 3);
+
+        memcpy(led_event.http_animation.buffer, (char *)&frame[1], len);
+
+        xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
+    }
+    else if (frame[0] == MSG_HEADER_PIXEL_END)
+    {
+        led_event.type = ANIMATE_END,
+        xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
+    }
+}
+
+#define MAX_RECV_BUFFER 2000
+
+static unsigned char receive_buffer[MAX_RECV_BUFFER];
+static int receive_buffer_position = 0;
+
+void bt_loop_frames(int bt_handle) {
+    int position = 0;
+
+    while (position + 4 <= receive_buffer_position) {
+        unsigned int frame_length = *((unsigned int*) &receive_buffer[position]);
+
+        if (position + 4 + 1 + frame_length <= receive_buffer_position) {
+            printf("FRAME: %d\n", frame_length);
+            bt_recv(bt_handle, 1 + frame_length, &receive_buffer[position + 4]);
+            position = position + 4 + 1 + frame_length;
+        } else {
+            printf("WAITING: %d => %d (%d)\n", position, position + 4 + 1 + frame_length, receive_buffer_position);
+            break;
+        }
+    }
+
+    if (position > 0) {
+        memmove(receive_buffer, &receive_buffer[position], receive_buffer_position - position);
+        receive_buffer_position = receive_buffer_position - position;
+    }
+}
+
+void bt_handle(int bt_handle, int packet_len, unsigned char *packet) {
+
+    if (receive_buffer_position + packet_len > MAX_RECV_BUFFER) {
+        ESP_LOGE(SPP_TAG, "receive buffer overrun %d", receive_buffer_position);
+        return;
+    } 
+    
+    memcpy(&receive_buffer[receive_buffer_position], packet, packet_len);
+    receive_buffer_position += packet_len;
+    
+    bt_loop_frames(bt_handle);
 }
 
 static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
@@ -108,43 +190,7 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
             esp_log_buffer_hex("", param->data_ind.data, param->data_ind.len);
         }
 
-        if (param->data_ind.data[0] == MSG_HEADER_HELLO)
-        {
-            char msg[18];
-            sprintf(msg, "i haz %04d pixels", LED_COUNT);
-            uint8_t response[5];
-            response[0] = MSG_HEADER_PIXEL_COUNT;
-            unsigned int n_leds = LED_COUNT;
-            memcpy(&response[1], &n_leds, sizeof(unsigned int));
-            esp_spp_write(param->data_ind.handle, 5, response);
-        }
-        else if (param->data_ind.data[0] == MSG_HEADER_PIXEL_BEGIN)
-        {
-            bt_ack();
-
-            led_event.type = ANIMATE_BEGIN;
-            led_event.animation_speed = param->data_ind.data[1];
-            xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
-        }
-        else if (param->data_ind.data[0] == MSG_HEADER_PIXEL_DATA)
-        {
-            led_event.type = ANIMATE;
-            int len = param->data_ind.len - 2;
-            led_event.http_animation.buffer = malloc(len);
-            led_event.http_animation.width = len / (LED_COUNT * 3);
-
-            memcpy(led_event.http_animation.buffer, (char *)&param->data_ind.data[2], len);
-            
-            xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
-        }
-        else if (param->data_ind.data[0] == MSG_HEADER_PIXEL_END)
-        {
-            bt_ack();
-
-            led_event.type = ANIMATE_END,
-            xQueueSend((QueueHandle_t)led_event_queue, &led_event, 100);
-        }
-
+        bt_handle(param->data_ind.handle, param->data_ind.len, param->data_ind.data);
         break;
     case ESP_SPP_CONG_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_CONG_EVT");

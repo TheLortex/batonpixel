@@ -11,6 +11,6 @@
 #define MSG_HEADER_PIXEL_END 5
 
 void bt_init(QueueHandle_t led_event_queue);
-void bt_ack();
+void bt_ack(unsigned int);
 
 #endif

@@ -24,7 +24,7 @@ struct animation_block
   unsigned int max_position;
   unsigned int frames_per_pixel;
   bool streaming_ended;
-  bool acked;
+  int ack_frame;
 };
 
 struct waiting_for_connection_block
@@ -143,7 +143,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
     state->connected_step++;
     if (state->connected_step >= LED_COUNT * 2)
     {
-      ESP_LOGI(TAG, "Waiting for connection");
+      ESP_LOGI(TAG, "Ready");
       state->kind = BLACK;
     }
     break;
@@ -156,18 +156,21 @@ void render(struct led_state *state, led_strip_handle_t strip)
     break;
 
   case IN_ANIMATION:;
-    int column = (state->animation.step / state->animation.frames_per_pixel) % MAX_COL;
-    int buffering_delta =
+    int pixel = state->animation.step / state->animation.frames_per_pixel;
+    int column = pixel % MAX_COL;
+    int planned_buffering_delta =
+        (MAX_COL + state->animation.ack_frame - column) % MAX_COL;
+
+    int actual_buffering_delta =
         (MAX_COL + state->animation.max_position - column) % MAX_COL;
 
-    if (buffering_delta < 16 && !state->animation.streaming_ended)
+    if (actual_buffering_delta < 16 && !state->animation.streaming_ended)
     {
-      // ACK to obtain more data;
-      if (state->animation.acked == false)
+      // ACK
+      if (planned_buffering_delta < 16)
       {
-        // ACK
-        bt_ack();
-        state->animation.acked = true;
+        bt_ack(32 - planned_buffering_delta);
+        state->animation.ack_frame = state->animation.ack_frame + 32 - planned_buffering_delta;
       }
     }
     else
@@ -175,14 +178,14 @@ void render(struct led_state *state, led_strip_handle_t strip)
       int base;
       char r, g, b;
 
-      if (state->animation.acked == false && buffering_delta < 32)
+      if (planned_buffering_delta < 32 - 8 && !state->animation.streaming_ended)
       {
         // ACK
-        bt_ack();
-        state->animation.acked = true;
+        bt_ack(32 - planned_buffering_delta);
+        state->animation.ack_frame = state->animation.ack_frame + 32 - planned_buffering_delta;
       }
 
-      if (column == state->animation.max_position)
+      if (column == state->animation.max_position % MAX_COL)
       {
         state->kind = BLACK;
       }
@@ -208,6 +211,8 @@ void render(struct led_state *state, led_strip_handle_t strip)
 
 #include "bmp.h"
 
+#include "rom/ets_sys.h"
+
 void led_strip(void *arg)
 {
   QueueHandle_t led_event_queue = (QueueHandle_t)arg;
@@ -215,16 +220,16 @@ void led_strip(void *arg)
   /* LED strip initialization with the GPIO and pixels number*/
   led_strip_config_t strip_config = {
       .strip_gpio_num = CONFIG_EXAMPLE_RMT_TX_GPIO, // The GPIO that connected to the LED strip's data line
-      .max_leds = LED_COUNT, // The number of LEDs in the strip,
-      .led_pixel_format = LED_PIXEL_FORMAT_GRB, // Pixel format of your LED strip
-      .led_model = LED_MODEL_WS2812, // LED strip model
-      .flags.invert_out = false, // whether to invert the output signal (useful when your hardware has a level inverter)
+      .max_leds = LED_COUNT,                        // The number of LEDs in the strip,
+      .led_pixel_format = LED_PIXEL_FORMAT_GRB,     // Pixel format of your LED strip
+      .led_model = LED_MODEL_WS2812,                // LED strip model
+      .flags.invert_out = false,                    // whether to invert the output signal (useful when your hardware has a level inverter)
   };
 
   led_strip_rmt_config_t rmt_config = {
-      .clk_src = RMT_CLK_SRC_DEFAULT, // different clock source can lead to different power consumption
+      .clk_src = RMT_CLK_SRC_DEFAULT,    // different clock source can lead to different power consumption
       .resolution_hz = 10 * 1000 * 1000, // 10MHz
-      .flags.with_dma = false, // whether to enable the DMA feature
+      .flags.with_dma = false,           // whether to enable the DMA feature
   };
 
   led_strip_handle_t strip;
@@ -245,23 +250,15 @@ void led_strip(void *arg)
 
   struct message event;
 
-  int64_t t0;
-
   while (true)
   {
-    t0 = esp_timer_get_time();
-
     render(&current_state, strip);
     ESP_ERROR_CHECK(led_strip_refresh(strip));
 
     // vTaskDelay(1);
+    ets_delay_us(200);
 
     int rcv = xQueueReceive(led_event_queue, &event, 0);
-
-    if (current_state.kind == INIT || current_state.kind == IN_ANIMATION)
-    {
-      printf("3: %lld\n", esp_timer_get_time() - t0);
-    }
 
     if (rcv)
     {
@@ -286,28 +283,27 @@ void led_strip(void *arg)
         current_state.animation.step = 0;
         current_state.animation.frames_per_pixel = 125 / event.animation_speed;
         current_state.animation.streaming_ended = false;
+        current_state.animation.ack_frame = 0;
         break;
       case ANIMATE_END:
+        ESP_LOGI(TAG, "Ending animation !");
         current_state.animation.streaming_ended = true;
         break;
-      case ANIMATE:;
+      case ANIMATE:
         int col_position = current_state.animation.max_position;
-        current_state.animation.max_position = (col_position + 1) % MAX_COL;
+        current_state.animation.max_position = col_position + 1;
 
         ESP_LOGI(TAG,
                  "Feed %d (%d)",
                  col_position,
-                 (current_state.animation.step / 5) % MAX_COL);
+                 (current_state.animation.step / current_state.animation.frames_per_pixel));
 
-        memcpy(&pixel_buffer[col_position * COLUMN_BYTES], event.http_animation.buffer, COLUMN_BYTES);
+        memcpy(&pixel_buffer[(col_position % MAX_COL) * COLUMN_BYTES], event.http_animation.buffer, COLUMN_BYTES);
 
         free(event.http_animation.buffer);
 
-        current_state.animation.acked = false;
-
         break;
       }
-      /* printf("MESSAGE: %d", event.type); */
     }
   }
 }

@@ -16,6 +16,7 @@ dependencies:
   cupertino_icons: ^1.0.3
   file_picker: 5.1.0
   image: ^4.0.0
+  freezed_annotation: ^2.2.0
 
 dev_dependencies:
   flutter_test:
@@ -24,6 +25,8 @@ dev_dependencies:
   flutter_bluetooth_serial: ^0.3.2
   integration_test:
     sdk: flutter
+  build_runner: ^2.3.3
+  freezed: ^2.3.2
 
 flutter:
   uses-material-design: true

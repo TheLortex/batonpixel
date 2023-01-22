@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:flutter_bluetooth_serial_example/ConnectedWidget.dart';
+import 'package:flutter_bluetooth_serial_example/Protocol.dart';
+import 'package:flutter_bluetooth_serial_example/StreamIteratorCustom.dart';
 import 'package:image/image.dart' as img;
 
 import 'dart:developer' as developer;
@@ -25,7 +27,7 @@ class _MainPage extends State<MainPage> {
   BluetoothState _bluetoothState = BluetoothState.UNKNOWN;
   BluetoothDevice? _bluetoothDevice;
   BluetoothConnection? _connection;
-  Stream? _input;
+  StreamIteratorCustom<ByteData>? _input;
   int? _pixels;
 
   @override
@@ -62,8 +64,7 @@ class _MainPage extends State<MainPage> {
         .asyncMap((_) => FlutterBluetoothSerial.instance
                 .getBondedDevices()
                 .then((bondedDevices) {
-              ft.debugPrint(
-                  "Listing bonded devices. " + bondedDevices.length.toString());
+              debugPrint("Listing bonded devices. ${bondedDevices.length}");
               try {
                 return bondedDevices.firstWhere((element) {
                   return element.address == deviceMac;
@@ -134,19 +135,41 @@ class _MainPage extends State<MainPage> {
           title: ElevatedButton(
         onPressed: () {
           BluetoothConnection.toAddress(target.address).then((connection) {
-            connection.output.add(Uint8List.fromList([0]));
-            Stream input = connection.input!.asBroadcastStream();
+            Hello().write(connection.output, null);
+
+            final input = StreamIteratorCustom(connection.input!.map((event) {
+              debugPrint(event.toString());
+              return event;
+            }).expand((event) {
+              List<ByteData> events = [];
+              int position = 0;
+
+              while (position < event.length) {
+                int size = ByteData.sublistView(event, position, position + 4)
+                    .getUint32(0, Endian.little);
+
+                events.add(
+                    ByteData.sublistView(event, position, position + 5 + size));
+                position += 5 + size;
+              }
+
+              assert(position == event.length);
+
+              return events;
+            }));
             setState(() => {_connection = connection, _input = input});
 
-            _input!.first.then((response) {
-              if (response[0] == 1) {
-                int pixels = ByteData.sublistView(response, 1, 5)
-                    .getUint32(0, Endian.little);
-                ft.debugPrint("Got pixels: " + pixels.toString());
+            _input!.moveNext().then((hasNext) {
+              if (hasNext) {
+                final response = _input!.current;
+
+                int pixels = PixelCount().expect(response);
+                debugPrint("Got pixels: $pixels");
                 setState(() => {_pixels = pixels});
-              } else {
-                setState(() => {_connection = null});
+                return;
               }
+
+              setState(() => {_connection = null});
             });
           });
         },
