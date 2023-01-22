@@ -108,11 +108,13 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       streamingControl = ElevatedButton(
           onPressed: null, child: Text("Please select an image"));
     } else if (_streaming == null) {
+      double expectedDurationS = _image!.width / _speed;
+
       streamingControl = ElevatedButton(
           onPressed: () {
             streamImage();
           },
-          child: Text('Start'));
+          child: Text('Start (${expectedDurationS.toStringAsFixed(2)}s)'));
     } else {
       streamingControl = Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -134,6 +136,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
         ],
       );
     }
+
     return Column(
       children: [
         ListTile(title: const Text('Select image')),
