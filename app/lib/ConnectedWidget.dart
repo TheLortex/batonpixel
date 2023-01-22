@@ -78,6 +78,7 @@ class ConnectedWidget extends StatefulWidget {
 class _ConnectedWidget extends State<ConnectedWidget> {
   img.Image? _image;
   Uint8List? _imageRender;
+  bool _imageRendering = false;
   PlatformFile? _file;
   double _delay = 0;
   double _speed = 30;
@@ -90,16 +91,26 @@ class _ConnectedWidget extends State<ConnectedWidget> {
     Widget image;
 
     if (_imageRender != null) {
-      image = SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          height: widget.pixels * 2,
-          width: _image!.width * 2,
-          child: Image.memory(_imageRender!, fit: BoxFit.cover),
-        ),
+      image = Stack(
+        alignment: AlignmentDirectional.center,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              height: widget.pixels * 2,
+              width: _image!.width * 2,
+              child: Image.memory(_imageRender!, fit: BoxFit.cover),
+            ),
+          ),
+          if (_imageRendering) CircularProgressIndicator()
+        ],
       );
     } else {
-      image = ListTile(title: Text('Select an image'));
+      if (_imageRendering) {
+        image = Center(child: CircularProgressIndicator());
+      } else {
+        image = ListTile(title: Text('Select an image'));
+      }
     }
 
     Widget streamingControl;
@@ -149,11 +160,13 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                 .then((f) {
               if (f != null) {
                 final file = f.files.first;
+                setState(() => _imageRendering = true);
                 prepareImage(file, widthFactor: 1, brightness: 1).then((image) {
                   if (image != null) {
                     setState(() => {
                           _image = image,
                           _imageRender = img.encodeJpg(image),
+                          _imageRendering = false,
                           _file = file,
                           _widthFactor = 1,
                           _brightness = 1,
@@ -214,6 +227,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                     },
                     onChangeEnd: (v) {
                       if (_file != null) {
+                        setState(() => _imageRendering = true);
                         prepareImage(_file as PlatformFile,
                                 widthFactor: v, brightness: _brightness)
                             .then((image) {
@@ -221,6 +235,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                             setState(() => {
                                   _image = image,
                                   _imageRender = img.encodeJpg(image),
+                                  _imageRendering = false,
                                   _widthFactor = v
                                 });
                           }
@@ -245,6 +260,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                   },
                   onChangeEnd: (v) {
                     if (_file != null) {
+                      setState(() => _imageRendering = true);
                       prepareImage(_file as PlatformFile,
                               widthFactor: _widthFactor, brightness: v)
                           .then((image) {
@@ -252,6 +268,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                           setState(() => {
                                 _image = image,
                                 _imageRender = img.encodeJpg(image),
+                                _imageRendering = false,
                                 _brightness = v
                               });
                         }
