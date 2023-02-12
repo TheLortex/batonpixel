@@ -23,6 +23,8 @@ class MainPage extends StatefulWidget {
 
 const deviceMac = "30:AE:A4:39:11:EA";
 
+const deviceMac2 = "C0:49:EF:CD:FF:96";
+
 class _MainPage extends State<MainPage> {
   BluetoothState _bluetoothState = BluetoothState.UNKNOWN;
   BluetoothDevice? _bluetoothDevice;
@@ -68,7 +70,8 @@ class _MainPage extends State<MainPage> {
               debugPrint("Listing bonded devices. ${bondedDevices.length}");
               try {
                 return bondedDevices.firstWhere((element) {
-                  return element.address == deviceMac;
+                  return element.address == deviceMac ||
+                      element.address == deviceMac2;
                 });
               } on StateError {
                 return null;

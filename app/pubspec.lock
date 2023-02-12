@@ -205,10 +205,12 @@ packages:
   flutter_bluetooth_serial:
     dependency: "direct dev"
     description:
-      name: flutter_bluetooth_serial
-      url: "https://pub.dartlang.org"
-    source: hosted
-    version: "0.3.2"
+      path: "."
+      ref: android12
+      resolved-ref: c39f26727492f2256240d1848d94719b98665b18
+      url: "https://github.com/safe-sky/flutter_bluetooth_serial.git"
+    source: git
+    version: "0.4.0"
   flutter_driver:
     dependency: transitive
     description: flutter
