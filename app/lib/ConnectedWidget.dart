@@ -30,14 +30,23 @@ img.Image? prepareImageSync(
   }
 
   if (image.height > image.width) {
-    image = img.copyRotate(image, angle: 90);
+    image = img.copyRotate(image, 90);
   }
 
-  for (final pixel in image) {
-    pixel.r = pixel.r * pixel.a * brightness / 255;
-    pixel.g = pixel.g * pixel.a * brightness / 255;
-    pixel.b = pixel.b * pixel.a * brightness / 255;
-    pixel.a = 255;
+  for (int x = 0; x < image.width; x++) {
+    for (int y = 0; y < image.height; y++) {
+      int p = image.getPixel(x, y);
+      int r = p & 0xff;
+      int g = (p >> 8) & 0xff;
+      int b = (p >> 16) & 0xff;
+      int a = (p >> 24) & 0xff;
+      r = (r * a * brightness) ~/ 255;
+      g = (g * a * brightness) ~/ 255;
+      b = (b * a * brightness) ~/ 255;
+      a = 255;
+
+      image.setPixelRgba(x, y, r, g, b, a);
+    }
   }
 
   final width = (widthFactor * image.width * 144 / image.height).round();
@@ -165,7 +174,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                   if (image != null) {
                     setState(() => {
                           _image = image,
-                          _imageRender = img.encodeJpg(image),
+                          _imageRender = img.encodeJpg(image) as Uint8List,
                           _imageRendering = false,
                           _file = file,
                           _widthFactor = 1,
@@ -234,7 +243,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                           if (image != null) {
                             setState(() => {
                                   _image = image,
-                                  _imageRender = img.encodeJpg(image),
+                                  _imageRender =
+                                      img.encodeJpg(image) as Uint8List,
                                   _imageRendering = false,
                                   _widthFactor = v
                                 });
@@ -267,7 +277,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                         if (image != null) {
                           setState(() => {
                                 _image = image,
-                                _imageRender = img.encodeJpg(image),
+                                _imageRender =
+                                    img.encodeJpg(image) as Uint8List,
                                 _imageRendering = false,
                                 _brightness = v
                               });
@@ -321,10 +332,13 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
       debugPrint("x: $x");
       for (int y = 0; y < widget.pixels; y++) {
-        final px = _image!.getPixel(x, y);
-        pixelMessage[y * 3] = gamma[px.r as int];
-        pixelMessage[y * 3 + 1] = gamma[px.g as int];
-        pixelMessage[y * 3 + 2] = gamma[px.b as int];
+        final p = _image!.getPixel(x, y);
+        int r = p & 0xff;
+        int g = (p >> 8) & 0xff;
+        int b = (p >> 16) & 0xff;
+        pixelMessage[y * 3] = gamma[r];
+        pixelMessage[y * 3 + 1] = gamma[g];
+        pixelMessage[y * 3 + 2] = gamma[b];
       }
 
       PixelData().write(widget.connection.output, pixelMessage);

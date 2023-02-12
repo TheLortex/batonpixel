@@ -71,7 +71,8 @@ class _MainPage extends State<MainPage> {
               try {
                 return bondedDevices.firstWhere((element) {
                   return element.address == deviceMac ||
-                      element.address == deviceMac2;
+                      element.address == deviceMac2 ||
+                      (element.name ?? "").contains("Pixelstick");
                 });
               } on StateError {
                 return null;
