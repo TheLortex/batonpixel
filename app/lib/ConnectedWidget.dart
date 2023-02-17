@@ -21,7 +21,17 @@ class DecodeParam {
   DecodeParam(this.fileBytes, this.sendPort);
 }
 
-img.Image? prepareImageSync(
+class ImagePrepareResult {
+  img.Image target;
+  img.Image render;
+
+  ImagePrepareResult({
+    required this.target,
+    required this.render,
+  });
+}
+
+ImagePrepareResult? prepareImageSync(
     Uint8List fileBytes, double widthFactor, int pixels, double brightness) {
   var image = img.decodeImage(fileBytes);
 
@@ -32,6 +42,13 @@ img.Image? prepareImageSync(
   if (image.height > image.width) {
     image = img.copyRotate(image, 90);
   }
+
+  final width = (widthFactor * image.width * pixels / image.height).round();
+
+  image = img.copyResize(image,
+      height: pixels, width: width, interpolation: img.Interpolation.linear);
+
+  final imageRender = image.clone();
 
   for (int x = 0; x < image.width; x++) {
     for (int y = 0; y < image.height; y++) {
@@ -46,16 +63,29 @@ img.Image? prepareImageSync(
       a = 255;
 
       image.setPixelRgba(x, y, r, g, b, a);
+
+      if (gamma[r] == 0 && gamma[g] == 0 && gamma[b] == 0) {
+        int xb = (x ~/ 16) % 2;
+        int yb = (y ~/ 16) % 2;
+        if ((xb == 0 && yb == 1) || (yb == 0 && xb == 1)) {
+          r = 64;
+          g = 64;
+          b = 64;
+        } else {
+          r = 0;
+          g = 0;
+          b = 0;
+        }
+      }
+
+      imageRender.setPixelRgba(x, y, r, g, b, a);
     }
   }
 
-  final width = (widthFactor * image.width * pixels / image.height).round();
-
-  return img.copyResize(image,
-      height: pixels, width: width, interpolation: img.Interpolation.linear);
+  return ImagePrepareResult(target: image, render: imageRender);
 }
 
-Future<img.Image?> prepareImage(PlatformFile file,
+Future<ImagePrepareResult?> prepareImage(PlatformFile file,
     {required double widthFactor,
     required int pixels,
     required double brightness}) async {
@@ -69,7 +99,7 @@ Future<img.Image?> prepareImage(PlatformFile file,
     p.sendPort.send(image);
   }, DecodeParam(file.bytes!, receivePort.sendPort));
 
-  return (await receivePort.first) as img.Image?;
+  return (await receivePort.first) as ImagePrepareResult?;
 }
 
 class ConnectedWidget extends StatefulWidget {
@@ -88,7 +118,7 @@ class ConnectedWidget extends StatefulWidget {
 }
 
 class _ConnectedWidget extends State<ConnectedWidget> {
-  img.Image? _image;
+  ImagePrepareResult? _image;
   Uint8List? _imageRender;
   bool _imageRendering = false;
   PlatformFile? _file;
@@ -109,8 +139,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SizedBox(
-              height: widget.pixels * 2,
-              width: _image!.width * 2,
+              height: widget.pixels.toDouble(),
+              width: _image!.render.width.toDouble(),
               child: Image.memory(_imageRender!, fit: BoxFit.cover),
             ),
           ),
@@ -131,7 +161,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       streamingControl = ElevatedButton(
           onPressed: null, child: Text("Please select an image"));
     } else if (_streaming == null) {
-      double expectedDurationS = _image!.width / _speed;
+      double expectedDurationS = _image!.target.width / _speed;
 
       streamingControl = ElevatedButton(
           onPressed: () {
@@ -147,7 +177,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
               child: Text('Streaming image: ' +
                   _streaming.toString() +
                   ' / ' +
-                  _image!.width.toString())),
+                  _image!.target.width.toString())),
           ElevatedButton(
               onPressed: () {
                 setState(() {
@@ -179,7 +209,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                   if (image != null) {
                     setState(() => {
                           _image = image,
-                          _imageRender = img.encodeJpg(image) as Uint8List,
+                          _imageRender = img.encodeJpg(image.render) as Uint8List,
                           _imageRendering = false,
                           _file = file,
                           _widthFactor = 1,
@@ -251,7 +281,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                             setState(() => {
                                   _image = image,
                                   _imageRender =
-                                      img.encodeJpg(image) as Uint8List,
+                                      img.encodeJpg(image.render) as Uint8List,
                                   _imageRendering = false,
                                   _widthFactor = v
                                 });
@@ -287,7 +317,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                           setState(() => {
                                 _image = image,
                                 _imageRender =
-                                    img.encodeJpg(image) as Uint8List,
+                                    img.encodeJpg(image.render) as Uint8List,
                                 _imageRendering = false,
                                 _brightness = v
                               });
@@ -331,7 +361,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
     var aborted = Abort.no;
 
-    for (var x = 0; x < _image!.width; x++) {
+    for (var x = 0; x < _image!.target.width; x++) {
       if (_streaming == null) {
         // Cancelled
         debugPrint("Cancelled");
@@ -341,7 +371,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
       debugPrint("x: $x");
       for (int y = 0; y < widget.pixels; y++) {
-        final p = _image!.getPixel(x, y);
+        final p = _image!.target.getPixel(x, y);
         int r = p & 0xff;
         int g = (p >> 8) & 0xff;
         int b = (p >> 16) & 0xff;
