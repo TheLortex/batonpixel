@@ -64,7 +64,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
   switch (state->kind)
   {
   case INIT:
-    index = state->init_step / 2;
+    index = state->init_step;
 
     if (index < LED_COUNT / 2)
     {
@@ -79,7 +79,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
     }
 
     state->init_step++;
-    if (state->init_step >= LED_COUNT * 2)
+    if (state->init_step >= LED_COUNT)
     {
       ESP_LOGI(TAG, "Waiting for connection");
       state->kind = WAITING_FOR_CONNECTION;
@@ -93,9 +93,9 @@ void render(struct led_state *state, led_strip_handle_t strip)
     index = state->waiting_for_connection.step;
     for (int i = 0; i < LED_COUNT; i++)
     {
-      if (abs(i * 10 - index) < 50)
+      if (abs(i * 5 - index) < 50)
       {
-        int dist = abs(i * 10 - index);
+        int dist = abs(i * 5 - index);
         int ofs = 4 * (50 - dist);
         ESP_ERROR_CHECK(led_strip_set_pixel(strip, i, ofs, 0, 0));
       }
@@ -113,10 +113,10 @@ void render(struct led_state *state, led_strip_handle_t strip)
     {
       state->waiting_for_connection.step--;
     }
-    if (state->waiting_for_connection.step >= LED_COUNT * 10)
+    if (state->waiting_for_connection.step >= LED_COUNT * 5)
     {
       state->waiting_for_connection.direction_forward = false;
-      state->waiting_for_connection.step = LED_COUNT * 10 - 1;
+      state->waiting_for_connection.step = LED_COUNT * 5 - 1;
     }
     else if (state->waiting_for_connection.step < 0)
     {
@@ -126,7 +126,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
     break;
 
   case CONNECTED:
-    index = state->connected_step / 2;
+    index = state->connected_step;
 
     if (index < LED_COUNT / 2)
     {
@@ -141,7 +141,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
     }
 
     state->connected_step++;
-    if (state->connected_step >= LED_COUNT * 2)
+    if (state->connected_step >= LED_COUNT)
     {
       ESP_LOGI(TAG, "Ready");
       state->kind = BLACK;
@@ -332,7 +332,7 @@ void led_strip(void *arg)
     case INIT:
     case WAITING_FOR_CONNECTION:
     case CONNECTED:
-      ets_delay_us(200);
+      ets_delay_us(100);
       break;
     case BLACK:
       vTaskDelay(200);
@@ -353,7 +353,7 @@ void led_strip(void *arg)
       {
         ets_delay_us(pause_time_us);
       }
-      
+
       t_last = esp_timer_get_time();
 
       break;

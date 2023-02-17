@@ -22,7 +22,7 @@ class DecodeParam {
 }
 
 img.Image? prepareImageSync(
-    Uint8List fileBytes, double widthFactor, double brightness) {
+    Uint8List fileBytes, double widthFactor, int pixels, double brightness) {
   var image = img.decodeImage(fileBytes);
 
   if (image == null) {
@@ -49,19 +49,22 @@ img.Image? prepareImageSync(
     }
   }
 
-  final width = (widthFactor * image.width * 144 / image.height).round();
+  final width = (widthFactor * image.width * pixels / image.height).round();
 
   return img.copyResize(image,
-      height: 144, width: width, interpolation: img.Interpolation.linear);
+      height: pixels, width: width, interpolation: img.Interpolation.linear);
 }
 
 Future<img.Image?> prepareImage(PlatformFile file,
-    {required double widthFactor, required double brightness}) async {
+    {required double widthFactor,
+    required int pixels,
+    required double brightness}) async {
   var receivePort = ReceivePort();
 
   await Isolate.spawn((DecodeParam p) {
     debugPrint("Preparing image");
-    final image = prepareImageSync(p.fileBytes, widthFactor, brightness);
+    final image =
+        prepareImageSync(p.fileBytes, widthFactor, pixels, brightness);
     debugPrint("Image ready");
     p.sendPort.send(image);
   }, DecodeParam(file.bytes!, receivePort.sendPort));
@@ -170,7 +173,9 @@ class _ConnectedWidget extends State<ConnectedWidget> {
               if (f != null) {
                 final file = f.files.first;
                 setState(() => _imageRendering = true);
-                prepareImage(file, widthFactor: 1, brightness: 1).then((image) {
+                prepareImage(file,
+                        widthFactor: 1, pixels: widget.pixels, brightness: 1)
+                    .then((image) {
                   if (image != null) {
                     setState(() => {
                           _image = image,
@@ -238,7 +243,9 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                       if (_file != null) {
                         setState(() => _imageRendering = true);
                         prepareImage(_file as PlatformFile,
-                                widthFactor: v, brightness: _brightness)
+                                widthFactor: v,
+                                pixels: widget.pixels,
+                                brightness: _brightness)
                             .then((image) {
                           if (image != null) {
                             setState(() => {
@@ -272,7 +279,9 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                     if (_file != null) {
                       setState(() => _imageRendering = true);
                       prepareImage(_file as PlatformFile,
-                              widthFactor: _widthFactor, brightness: v)
+                              widthFactor: _widthFactor,
+                              pixels: widget.pixels,
+                              brightness: v)
                           .then((image) {
                         if (image != null) {
                           setState(() => {
