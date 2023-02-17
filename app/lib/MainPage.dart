@@ -13,6 +13,7 @@ import 'package:image/image.dart' as img;
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart' as ft;
 import 'dart:convert';
+import 'package:fluttertoast/fluttertoast.dart';
 
 // import './helpers/LineChart.dart';
 
@@ -186,8 +187,14 @@ class _MainPage extends State<MainPage> {
                       return;
                     }
 
-                    setState(() => {_connection = null});
+                    Fluttertoast.showToast(
+                        msg: "Failed to connect: connection closed");
+                    setState(() => {_connection = null, _connecting = false});
                   });
+                }).catchError((e) {
+                  Fluttertoast.showToast(
+                      msg: "Failed to connect: ${e.toString()}");
+                  setState(() => {_connecting = false});
                 });
               },
         child: Text(_connecting ? 'Connecting...' : 'Connect'),
