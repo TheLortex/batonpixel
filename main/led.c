@@ -14,6 +14,7 @@ enum led_state_kind
   INIT,
   WAITING_FOR_CONNECTION,
   CONNECTED,
+  TO_BLACK,
   BLACK,
   IN_ANIMATION
 };
@@ -144,15 +145,19 @@ void render(struct led_state *state, led_strip_handle_t strip)
     if (state->connected_step >= LED_COUNT)
     {
       ESP_LOGI(TAG, "Ready");
-      state->kind = BLACK;
+      state->kind = TO_BLACK;
     }
     break;
 
   case BLACK:
+    break;
+
+  case TO_BLACK:
     for (int i = 0; i < LED_COUNT; i++)
     {
       ESP_ERROR_CHECK(led_strip_set_pixel(strip, i, 0, 0, 0));
     }
+    state->kind = BLACK;
     break;
 
   case IN_ANIMATION:;
@@ -186,7 +191,7 @@ void render(struct led_state *state, led_strip_handle_t strip)
 
       if (column == state->animation.max_position % MAX_COL)
       {
-        state->kind = BLACK;
+        state->kind = TO_BLACK;
       }
       else
       {
@@ -286,7 +291,7 @@ void led_strip(void *arg)
         current_state.waiting_for_connection.direction_forward = true;
         break;
       case STOP:
-        current_state.kind = BLACK;
+        current_state.kind = TO_BLACK;
         break;
       case ANIMATE_BEGIN:
         ESP_LOGI(TAG, "Beginning animation !");
@@ -301,7 +306,7 @@ void led_strip(void *arg)
         ESP_LOGI(TAG, "Ending animation !");
         if (event.animate_end_aborted)
         {
-          current_state.kind = BLACK;
+          current_state.kind = TO_BLACK;
         }
         else
         {
@@ -332,10 +337,12 @@ void led_strip(void *arg)
     case INIT:
     case WAITING_FOR_CONNECTION:
     case CONNECTED:
+    case TO_BLACK:
       ets_delay_us(100);
       break;
+
     case BLACK:
-      vTaskDelay(200);
+      vTaskDelay(200 / portTICK_PERIOD_MS);
       break;
     case IN_ANIMATION:
       int64_t t_now = esp_timer_get_time();
