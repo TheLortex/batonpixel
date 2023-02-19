@@ -22,13 +22,29 @@ class DecodeParam {
 }
 
 class ImagePrepareResult {
-  img.Image target;
-  Uint8List render;
+  img.Image image;
+  img.Image preview;
+  Uint8List previewJpg;
 
-  ImagePrepareResult({
-    required this.target,
-    required this.render,
-  });
+  ImagePrepareResult(
+      {required this.image, required this.preview, required this.previewJpg});
+
+  factory ImagePrepareResult.make({
+    required img.Image image,
+    required img.Image preview,
+  }) {
+    return ImagePrepareResult(
+        image: image,
+        preview: preview,
+        previewJpg: img.encodeJpg(preview) as Uint8List);
+  }
+
+  ImagePrepareResult reversed() {
+    final newImage = img.flipVertical(image);
+    final newPreview = img.flipVertical(preview);
+
+    return ImagePrepareResult.make(image: newImage, preview: newPreview);
+  }
 }
 
 ImagePrepareResult? prepareImageSync(
@@ -82,9 +98,7 @@ ImagePrepareResult? prepareImageSync(
     }
   }
 
-  return ImagePrepareResult(
-      target: image,
-      render: img.encodeJpg(imageRender) as Uint8List);
+  return ImagePrepareResult.make(image: image, preview: imageRender);
 }
 
 Future<ImagePrepareResult?> prepareImage(PlatformFile file,
@@ -141,8 +155,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               height: widget.pixels.toDouble(),
-              width: _image!.target.width.toDouble(),
-              child: Image.memory(_image!.render, fit: BoxFit.cover),
+              width: _image!.preview.width.toDouble(),
+              child: Image.memory(_image!.previewJpg, fit: BoxFit.cover),
             ),
           ),
           if (_imageRendering) CircularProgressIndicator()
@@ -162,8 +176,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       streamingControl = ElevatedButton(
           onPressed: null, child: Text("Please select an image"));
     } else if (_streaming == null) {
-      double expectedDurationS = _image!.target.width / _speed;
-      double distance = _image!.target.width / _image!.target.height;
+      double expectedDurationS = _image!.image.width / _speed;
+      double distance = _image!.image.width / _image!.image.height;
 
       streamingControl = ElevatedButton(
           onPressed: () {
@@ -180,7 +194,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
               child: Text('Streaming image: ' +
                   _streaming.toString() +
                   ' / ' +
-                  _image!.target.width.toString())),
+                  _image!.image.width.toString())),
           ElevatedButton(
               onPressed: () {
                 setState(() {
@@ -197,32 +211,42 @@ class _ConnectedWidget extends State<ConnectedWidget> {
       children: [
         ListTile(title: const Text('Select image')),
         ListTile(
-            title: ElevatedButton(
-          child: const Text('Select'),
-          onPressed: () {
-            FilePicker.platform
-                .pickFiles(type: FileType.image, withData: true)
-                .then((f) {
-              if (f != null) {
-                final file = f.files.first;
-                setState(() => _imageRendering = true);
-                prepareImage(file,
-                        widthFactor: 1, pixels: widget.pixels, brightness: 1)
-                    .then((image) {
-                  if (image != null) {
-                    setState(() => {
-                          _image = image,
-                          _imageRendering = false,
-                          _file = file,
-                          _widthFactor = 1,
-                          _brightness = 1,
-                        });
+            title: Row(children: [
+          ElevatedButton(
+              child: const Text('Select'),
+              onPressed: () {
+                FilePicker.platform
+                    .pickFiles(type: FileType.image, withData: true)
+                    .then((f) {
+                  if (f != null) {
+                    final file = f.files.first;
+                    setState(() => _imageRendering = true);
+                    prepareImage(file,
+                            widthFactor: 1,
+                            pixels: widget.pixels,
+                            brightness: 1)
+                        .then((image) {
+                      if (image != null) {
+                        setState(() => {
+                              _image = image,
+                              _imageRendering = false,
+                              _file = file,
+                              _widthFactor = 1,
+                              _brightness = 1,
+                            });
+                      }
+                    });
                   }
                 });
-              }
-            });
-          },
-        )),
+              }),
+          if (_image != null)
+            ElevatedButton(
+              child: const Text('Flip image'),
+              onPressed: () {
+                setState(() => {_image = _image!.reversed()});
+              },
+            )
+        ])),
         image,
         ListTile(
             title: Row(
@@ -301,7 +325,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                   min: 0,
                   max: 1,
                   divisions: 10,
-                  label: "Width factor",
+                  label: "Brightness",
                   onChanged: (v) {
                     setState(() => {_brightness = v});
                   },
@@ -359,7 +383,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
     var aborted = Abort.no;
 
-    for (var x = 0; x < _image!.target.width; x++) {
+    for (var x = 0; x < _image!.image.width; x++) {
       if (_streaming == null) {
         // Cancelled
         debugPrint("Cancelled");
@@ -367,9 +391,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
         break;
       }
 
-      debugPrint("x: $x");
       for (int y = 0; y < widget.pixels; y++) {
-        final p = _image!.target.getPixel(x, y);
+        final p = _image!.image.getPixel(x, y);
         int r = p & 0xff;
         int g = (p >> 8) & 0xff;
         int b = (p >> 16) & 0xff;
