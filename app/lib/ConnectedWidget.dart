@@ -162,12 +162,14 @@ class _ConnectedWidget extends State<ConnectedWidget> {
           onPressed: null, child: Text("Please select an image"));
     } else if (_streaming == null) {
       double expectedDurationS = _image!.target.width / _speed;
+      double distance = _image!.target.width / _image!.target.height;
 
       streamingControl = ElevatedButton(
           onPressed: () {
             streamImage();
           },
-          child: Text('Start (${expectedDurationS.toStringAsFixed(2)}s)'));
+          child: Text(
+              'Start (${expectedDurationS.toStringAsFixed(2)}s, ${distance.toStringAsFixed(2)}m)'));
     } else {
       streamingControl = Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -209,7 +211,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                   if (image != null) {
                     setState(() => {
                           _image = image,
-                          _imageRender = img.encodeJpg(image.render) as Uint8List,
+                          _imageRender =
+                              img.encodeJpg(image.render) as Uint8List,
                           _imageRendering = false,
                           _file = file,
                           _widthFactor = 1,
