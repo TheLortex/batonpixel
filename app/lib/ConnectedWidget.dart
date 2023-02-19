@@ -23,7 +23,7 @@ class DecodeParam {
 
 class ImagePrepareResult {
   img.Image target;
-  img.Image render;
+  Uint8List render;
 
   ImagePrepareResult({
     required this.target,
@@ -82,7 +82,9 @@ ImagePrepareResult? prepareImageSync(
     }
   }
 
-  return ImagePrepareResult(target: image, render: imageRender);
+  return ImagePrepareResult(
+      target: image,
+      render: img.encodeJpg(imageRender) as Uint8List);
 }
 
 Future<ImagePrepareResult?> prepareImage(PlatformFile file,
@@ -119,7 +121,6 @@ class ConnectedWidget extends StatefulWidget {
 
 class _ConnectedWidget extends State<ConnectedWidget> {
   ImagePrepareResult? _image;
-  Uint8List? _imageRender;
   bool _imageRendering = false;
   PlatformFile? _file;
   double _delay = 0;
@@ -132,7 +133,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
   Widget build(BuildContext context) {
     Widget image;
 
-    if (_imageRender != null) {
+    if (_image != null) {
       image = Stack(
         alignment: AlignmentDirectional.center,
         children: [
@@ -140,8 +141,8 @@ class _ConnectedWidget extends State<ConnectedWidget> {
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               height: widget.pixels.toDouble(),
-              width: _image!.render.width.toDouble(),
-              child: Image.memory(_imageRender!, fit: BoxFit.cover),
+              width: _image!.target.width.toDouble(),
+              child: Image.memory(_image!.render, fit: BoxFit.cover),
             ),
           ),
           if (_imageRendering) CircularProgressIndicator()
@@ -157,7 +158,7 @@ class _ConnectedWidget extends State<ConnectedWidget> {
 
     Widget streamingControl;
 
-    if (_imageRender == null) {
+    if (_image == null) {
       streamingControl = ElevatedButton(
           onPressed: null, child: Text("Please select an image"));
     } else if (_streaming == null) {
@@ -211,8 +212,6 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                   if (image != null) {
                     setState(() => {
                           _image = image,
-                          _imageRender =
-                              img.encodeJpg(image.render) as Uint8List,
                           _imageRendering = false,
                           _file = file,
                           _widthFactor = 1,
@@ -283,8 +282,6 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                           if (image != null) {
                             setState(() => {
                                   _image = image,
-                                  _imageRender =
-                                      img.encodeJpg(image.render) as Uint8List,
                                   _imageRendering = false,
                                   _widthFactor = v
                                 });
@@ -319,8 +316,6 @@ class _ConnectedWidget extends State<ConnectedWidget> {
                         if (image != null) {
                           setState(() => {
                                 _image = image,
-                                _imageRender =
-                                    img.encodeJpg(image.render) as Uint8List,
                                 _imageRendering = false,
                                 _brightness = v
                               });
