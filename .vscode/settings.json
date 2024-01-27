@@ -1,5 +1,15 @@
 {
     "idf.flashType": "UART",
     "idf.port": "/dev/ttyUSB0",
-    "idf.adapterTargetName": "esp32"
+    "idf.adapterTargetName": "esp32",
+    "idf.openOcdConfigs": [
+        "board/esp32-bridge.cfg"
+    ],
+    "files.associations": {
+        "nimble_port.h": "c",
+        "nimble_port_freertos.h": "c",
+        "modlog.h": "c",
+        "ble.h": "c",
+        "ble_svc_gap.h": "c"
+    }
 }
